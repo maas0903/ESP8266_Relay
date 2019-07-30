@@ -3,20 +3,21 @@
 #include <ArduinoJson.h>
 #include <Arduino.h>
 
-#include <credentialsAP.h>
+#include <credentials.h>
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
 #include <WiFiUdp.h>
 #include <NTPClient.h>
+#include <TimeLib.h>
 
 #define HTTP_REST_PORT 80
 #define WIFI_RETRY_DELAY 500
 #define MAX_WIFI_INIT_RETRY 50
 #define ONE_WIRE_BUS 2
 
-const long utcOffsetInSeconds = 3600;
+const long utcOffsetInSeconds = 0;
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
@@ -28,23 +29,13 @@ float tempSensor1;
 DeviceAddress Thermometer;
 uint8_t sensor1[8];
 
-struct Sensor18B20
-{
-    String deviceAddress;
-    byte gpio;
-    String temperature;
-    String ipAddress;
-} thermometer_resource;
+String deviceAddress = "";
+byte gpio = 2;
+String temperature = "-127";
+String ipAddress = "127.0.0.0";
+String hostname = "";
 
 ESP8266WebServer http_rest_server(HTTP_REST_PORT);
-
-void init_thermometer_resource()
-{
-    thermometer_resource.deviceAddress = "";
-    thermometer_resource.gpio = 2;
-    thermometer_resource.temperature = "-127";
-    thermometer_resource.ipAddress = "127.0.0.0";
-}
 
 int init_wifi()
 {
@@ -61,6 +52,9 @@ int init_wifi()
         delay(WIFI_RETRY_DELAY);
         Serial.print("#");
     }
+    Serial.println();
+    hostname = WiFi.hostname();
+    Serial.println("hostname = "+hostname);
     return WiFi.status();
 }
 
@@ -82,32 +76,44 @@ void get_temps()
     Serial.println(http_rest_server.method());
 
     timeClient.update();
-    String currentTime= timeClient.getFormattedTime();
+    unsigned long epochTime = timeClient.getEpochTime();
+    char buff[32];
+    sprintf(buff, "%02d-%02d-%02d %02d:%02d:%02d",
+            year(epochTime),
+            month(epochTime),
+            day(epochTime),
+            hour(epochTime),
+            minute(epochTime),
+            second(epochTime));
+    String currentTime = buff;
+
     Serial.println(currentTime);
 
     sensors.requestTemperatures();
     tempSensor1 = sensors.getTempC(sensor1);
 
-    thermometer_resource.deviceAddress = GetAddressToString(Thermometer);
-    thermometer_resource.temperature = tempSensor1;
-    thermometer_resource.ipAddress = WiFi.localIP().toString();
+    deviceAddress = GetAddressToString(Thermometer);
+    temperature = tempSensor1;
+    ipAddress = WiFi.localIP().toString();
 
-    StaticJsonBuffer<200> jsonBuffer;
+    StaticJsonBuffer<400> jsonBuffer;
     JsonObject &jsonObj = jsonBuffer.createObject();
-    char JSONmessageBuffer[200];
+    char JSONmessageBuffer[400];
 
-    if (thermometer_resource.deviceAddress.equals(""))
+    if (deviceAddress.equals(""))
     {
         Serial.print("No Content");
         http_rest_server.send(204);
     }
     else
     {
-        jsonObj["id"] = thermometer_resource.deviceAddress;
-        jsonObj["gpio"] = thermometer_resource.gpio;
+        jsonObj["id"] = deviceAddress;
+        jsonObj["gpio"] = gpio;
         jsonObj["UTC time"] = currentTime;
-        jsonObj["temperature"] = thermometer_resource.temperature;
-        jsonObj["ipaddress"] = thermometer_resource.ipAddress;
+        jsonObj["Epoch time"] = epochTime;
+        jsonObj["temperature"] = temperature;
+        jsonObj["hostname"] = hostname;
+        jsonObj["ipaddress"] = ipAddress;
         jsonObj.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
         http_rest_server.send(200, "application/json", JSONmessageBuffer);
     }
@@ -126,7 +132,6 @@ void setup(void)
 {
     Serial.begin(115200);
 
-    init_thermometer_resource();
     sensors.begin();
     if (sensors.getAddress(Thermometer, 0))
     {
@@ -139,7 +144,7 @@ void setup(void)
 
     if (init_wifi() == WL_CONNECTED)
     {
-        Serial.print("Connetted to ");
+        Serial.print("Connected to ");
         Serial.print(ssid);
         Serial.print("--- IP: ");
         Serial.println(WiFi.localIP());
