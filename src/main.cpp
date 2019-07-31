@@ -108,13 +108,14 @@ void get_temps()
     else
     {
         jsonObj["UtcTime"] = currentTime;
-        jsonObj["Epoch time"] = epochTime;
+        jsonObj["EpochTime"] = epochTime;
         jsonObj["ThermometerId"] = deviceAddress;
         jsonObj["Temperature"] = temperature;
         jsonObj["Hostname"] = hostname;
         jsonObj["IpAddress"] = ipAddress;
         jsonObj["Gpio"] = gpio;
         jsonObj.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+        http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
         http_rest_server.send(200, "application/json", JSONmessageBuffer);
     }
 }
