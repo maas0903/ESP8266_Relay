@@ -2,6 +2,10 @@
 1-wire esp8266-01 thermometer REST API with 15B20 chip.
 Reads first found Device ID, must be on GPIO2.
 Example:
+
+HTTP//http://192.168.xx.xx/temps
+
+gives
 {
   "id": "28ff7557801604ec",
   "gpio": 2,
