@@ -25,12 +25,12 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
-float tempSensor1;
-DeviceAddress Thermometer;
-uint8_t sensor1[8];
-
-String deviceAddress = "";
-byte gpio = 2;
+float tempSensor;
+DeviceAddress Thermometers[5];
+uint8_t sensorBytes[8];
+int deviceCount;
+String deviceAddress;
+byte gpio = ONE_WIRE_BUS;
 String temperature = "-127";
 String ipAddress = "127.0.0.0";
 String hostname = "";
@@ -54,7 +54,7 @@ int init_wifi()
     }
     Serial.println();
     hostname = WiFi.hostname();
-    Serial.println("hostname = "+hostname);
+    Serial.println("hostname = " + hostname);
     return WiFi.status();
 }
 
@@ -89,34 +89,47 @@ void get_temps()
 
     Serial.println(currentTime);
 
-    sensors.requestTemperatures();
-    tempSensor1 = sensors.getTempC(sensor1);
+    deviceCount = sensors.getDeviceCount();
 
-    deviceAddress = GetAddressToString(Thermometer);
-    temperature = tempSensor1;
+    sensors.requestTemperatures();
     ipAddress = WiFi.localIP().toString();
 
-    StaticJsonBuffer<400> jsonBuffer;
-    JsonObject &jsonObj = jsonBuffer.createObject();
-    char JSONmessageBuffer[400];
+    for (int i = 0; i < deviceCount; i++)
+    {
+        if (sensors.getAddress(Thermometers[i], 0))
+        {
+            for (uint8_t j = 0; j < 8; j++)
+            {
+                sensorBytes[i] = Thermometers[i][j];
+            }
+        }
 
-    if (deviceAddress.equals(""))
-    {
-        Serial.print("No Content");
-        http_rest_server.send(204);
-    }
-    else
-    {
-        jsonObj["UtcTime"] = currentTime;
-        jsonObj["EpochTime"] = epochTime;
-        jsonObj["ThermometerId"] = deviceAddress;
-        jsonObj["Temperature"] = temperature;
-        jsonObj["Hostname"] = hostname;
-        jsonObj["IpAddress"] = ipAddress;
-        jsonObj["Gpio"] = gpio;
-        jsonObj.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
-        http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
-        http_rest_server.send(200, "application/json", JSONmessageBuffer);
+        tempSensor = sensors.getTempC(sensorBytes);
+        deviceAddress = GetAddressToString(Thermometers[i]);
+        temperature = tempSensor;
+
+        StaticJsonBuffer<400> jsonBuffer;
+        JsonObject &jsonObj = jsonBuffer.createObject();
+        char JSONmessageBuffer[400];
+
+        if (deviceAddress.equals(""))
+        {
+            Serial.print("No Content");
+            http_rest_server.send(204);
+        }
+        else
+        {
+            jsonObj["UtcTime"] = currentTime;
+            jsonObj["EpochTime"] = epochTime;
+            jsonObj["ThermometerId"] = deviceAddress;
+            jsonObj["Temperature"] = temperature;
+            jsonObj["Hostname"] = hostname;
+            jsonObj["IpAddress"] = ipAddress;
+            jsonObj["Gpio"] = gpio;
+            jsonObj.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+            http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
+            http_rest_server.send(200, "application/json", JSONmessageBuffer);
+        }
     }
 }
 
@@ -133,16 +146,6 @@ void setup(void)
 {
     Serial.begin(115200);
 
-    sensors.begin();
-    if (sensors.getAddress(Thermometer, 0))
-    {
-        //Take the first sensor as the measuring sensor
-        for (uint8_t i = 0; i < 8; i++)
-        {
-            sensor1[i] = Thermometer[i];
-        }
-    }
-
     if (init_wifi() == WL_CONNECTED)
     {
         Serial.print("Connected to ");
@@ -156,6 +159,7 @@ void setup(void)
         Serial.println(ssid);
     }
 
+    sensors.begin();
     timeClient.begin();
 
     config_rest_server_routing();
