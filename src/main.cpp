@@ -130,6 +130,7 @@ void get_temps()
     else
     {
         //for (int i = 0; i < deviceCount; i++)
+        //
         {
             jsonObj["UtcTime"] = currentTime;
             jsonObj["EpochTime"] = epochTime;
