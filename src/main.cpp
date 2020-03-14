@@ -118,9 +118,9 @@ void get_temps()
     strTemperature1 = tempSensor1;
     ipAddress = WiFi.localIP().toString();
 
-    StaticJsonBuffer<400> jsonBuffer;
-    JsonObject &jsonObj = jsonBuffer.createObject();
-    char JSONmessageBuffer[400];
+        StaticJsonBuffer<400> jsonBuffer;
+        JsonObject &jsonObj = jsonBuffer.createObject();
+        char JSONmessageBuffer[400];
 
     if (deviceAddress0.equals("") && deviceAddress1.equals(""))
     {
@@ -196,6 +196,7 @@ void setup(void)
         Serial.println(ssid);
     }
 
+    sensors.begin();
     timeClient.begin();
 
     config_rest_server_routing();
