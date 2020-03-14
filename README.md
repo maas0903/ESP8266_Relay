@@ -3,7 +3,7 @@
 Reads first found Device ID, must be on GPIO2.
 Example:
 
-HTTP//http://192.168.xx.xx/temps
+http://192.168.xx.xx/temps
 
 gives
 {
