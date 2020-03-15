@@ -68,8 +68,8 @@ int init_wifi()
     Serial.println();
     hostname = WiFi.hostname();
     Serial.println("hostname = " + hostname);
-    return WiFi.status();
     BlinkNTimes(LED_0, 3, 500);
+    return WiFi.status();
 }
 
 String GetAddressToString(DeviceAddress deviceAddress)
@@ -103,27 +103,17 @@ String GetCurrentTime()
 
 void get_temps()
 {
+    BlinkNTimes(LED_0, 1, 500);
     StaticJsonBuffer<600> jsonBuffer;
     JsonObject &jsonObj = jsonBuffer.createObject();
     char JSONmessageBuffer[600];
-    
+
     try
     {
+        jsonObj["UtcTime"] = GetCurrentTime();
         jsonObj["DeviceCount"] = deviceCount;
-        sensors.requestTemperatures();
-        jsonObj["Nommer="] = "2";
-        /*for (int i = 0; i < deviceCount; i++)
-        {
-            jsonObj["Nommer="] = "2.1";
-            tempSensor[i] = sensors.getTempC(sensor[i]);
-            jsonObj["Nommer="] = "2.2";
-            deviceAddress[i] = GetAddressToString(Thermometer[i]);
-            jsonObj["Nommer="] = "2.3";
-            strTemperature[i] = tempSensor[i];
-            jsonObj["Nommer="] = "2.4";
-        }
-
-        ipAddress = WiFi.localIP().toString();
+        jsonObj["Hostname"] = hostname;
+        jsonObj["IpAddress"] = WiFi.localIP().toString();
 
         if (deviceCount == 0)
         {
@@ -132,19 +122,23 @@ void get_temps()
         }
         else
         {
-            jsonObj["UtcTime"] = GetCurrentTime();
-            jsonObj["DeviceCount"] = deviceCount;
-            jsonObj["Hostname"] = hostname;
-            jsonObj["IpAddress"] = ipAddress;
             jsonObj["Gpio"] = gpio;
-            jsonObj["Nommer="] = "3";
-
+            sensors.requestTemperatures();
             for (int i = 0; i < deviceCount; i++)
             {
-                jsonObj["ThermometerId" + i] = deviceAddress[i];
+                tempSensor[i] = sensors.getTempC(sensor[i]);
+                deviceAddress[i] = GetAddressToString(Thermometer[i]);
+                strTemperature[i] = tempSensor[i];
+            }
+
+            String tmpStr;
+            for (int i = 0; i < deviceCount; i++)
+            {
+                tmpStr = String(i);
+                jsonObj["ThermometerId" + tmpStr] = deviceAddress[i];
+                jsonObj["Temperature" + tmpStr] = strTemperature[i];
             }
         }
-        */
     }
     catch (const std::exception &e)
     {
@@ -153,11 +147,11 @@ void get_temps()
         jsonObj["Exception"] = " ";
         //std::cerr << e.what() << '\n';
     }
-    
+
     jsonObj.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
-    
+
     http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
-    
+
     http_rest_server.send(200, "application/json", JSONmessageBuffer);
 }
 
@@ -198,16 +192,23 @@ void setup(void)
     http_rest_server.begin();
     Serial.println("HTTP REST Server Started");
 
-    deviceCount =sensors.getDeviceCount();
-    for (int j = 0; j < deviceCount; j++)
+    deviceCount = sensors.getDeviceCount();
+    try
     {
-        if (sensors.getAddress(Thermometer[0], 0))
+        for (int j = 0; j < deviceCount; j++)
         {
-            for (uint8_t i = 0; i < 8; i++)
+            if (sensors.getAddress(Thermometer[j], j))
             {
-                sensor[j][i] = Thermometer[0][i];
+                for (uint8_t i = 0; i < 8; i++)
+                {
+                    sensor[j][i] = Thermometer[j][i];
+                }
             }
         }
+    }
+    catch (const std::exception &e)
+    {
+        BlinkNTimes(LED_0, 10, 1000);
     }
 }
 
