@@ -196,7 +196,6 @@ void setup(void)
         Serial.println(ssid);
     }
 
-    sensors.begin();
     timeClient.begin();
 
     config_rest_server_routing();
