@@ -17,6 +17,15 @@
 #define MAX_WIFI_INIT_RETRY 50
 #define ONE_WIRE_BUS 2
 
+
+//Static IP address configuration
+IPAddress staticIP(192, 168, 63, 121);
+IPAddress gateway(192, 168, 63, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(8, 8, 8, 8);
+
+const char* hostName = "ESP01";
+
 const long utcOffsetInSeconds = 0;
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 // Define NTP Client to get time
@@ -32,8 +41,6 @@ uint8_t sensor[5][8];
 String deviceAddress[5] = {"", "", "", "", ""};
 byte gpio = 2;
 String strTemperature[5] = {"-127", "-127", "-127", "-127", "-127"};
-String ipAddress = "127.0.0.0";
-String hostname = "";
 int deviceCount;
 
 ESP8266WebServer http_rest_server(HTTP_REST_PORT);
@@ -56,6 +63,10 @@ int init_wifi()
 
     Serial.println("Connecting to WiFi");
 
+    WiFi.hostname(hostName);
+    //WiFi.config(staticIP, subnet, gateway, dns);
+    WiFi.config(staticIP, gateway, subnet, dns);
+    WiFi.begin(ssid, password);
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
 
@@ -65,9 +76,8 @@ int init_wifi()
         delay(WIFI_RETRY_DELAY);
         Serial.print("#");
     }
-    Serial.println();
-    hostname = WiFi.hostname();
-    Serial.println("hostname = " + hostname);
+    //Serial.println();
+    //Serial.println("hostname = " + WiFi.hostname);
     BlinkNTimes(LED_0, 3, 500);
     return WiFi.status();
 }
@@ -112,7 +122,7 @@ void get_temps()
     {
         jsonObj["UtcTime"] = GetCurrentTime();
         jsonObj["DeviceCount"] = deviceCount;
-        jsonObj["Hostname"] = hostname;
+        jsonObj["Hostname"] = hostName;
         jsonObj["IpAddress"] = WiFi.localIP().toString();
 
         if (deviceCount == 0)
