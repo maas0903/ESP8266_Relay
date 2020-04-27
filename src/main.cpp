@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
 #include <Arduino.h>
 
@@ -12,24 +11,17 @@
 #include <NTPClient.h>
 #include <TimeLib.h>
 
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+
 #define HTTP_REST_PORT 80
 #define WIFI_RETRY_DELAY 500
 #define MAX_WIFI_INIT_RETRY 50
 #define ONE_WIRE_BUS 2
 
-
-//Static IP address configuration
-IPAddress staticIP(192, 168, 63, 121);
-IPAddress gateway(192, 168, 63, 1);
-IPAddress subnet(255, 255, 255, 0);
-IPAddress dns(8, 8, 8, 8);
-
-const char* hostName = "ESP01";
-
-const long utcOffsetInSeconds = 0;
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
+const long utcOffsetInSeconds = 0;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 
 OneWire oneWire(ONE_WIRE_BUS);
@@ -41,6 +33,13 @@ uint8_t sensor[5][8];
 String deviceAddress[5] = {"", "", "", "", ""};
 byte gpio = 2;
 String strTemperature[5] = {"-127", "-127", "-127", "-127", "-127"};
+
+IPAddress staticIP(192, 168, 63, 121);
+IPAddress gateway(192, 168, 63, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(192, 168, 63, 21);
+String hostName = "esp01.local";
+
 int deviceCount;
 
 ESP8266WebServer http_rest_server(HTTP_REST_PORT);
@@ -64,9 +63,7 @@ int init_wifi()
     Serial.println("Connecting to WiFi");
 
     WiFi.hostname(hostName);
-    //WiFi.config(staticIP, subnet, gateway, dns);
-    WiFi.config(staticIP, gateway, subnet, dns);
-    WiFi.begin(ssid, password);
+    WiFi.config(staticIP, gateway, subnet, dns);    
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
 
@@ -76,8 +73,8 @@ int init_wifi()
         delay(WIFI_RETRY_DELAY);
         Serial.print("#");
     }
-    //Serial.println();
-    //Serial.println("hostname = " + WiFi.hostname);
+    Serial.println();
+    Serial.println("hostName = " + hostName);
     BlinkNTimes(LED_0, 3, 500);
     return WiFi.status();
 }
@@ -113,7 +110,7 @@ String GetCurrentTime()
 
 void get_temps()
 {
-    BlinkNTimes(LED_0, 1, 500);
+    BlinkNTimes(LED_0, 2, 500);
     StaticJsonBuffer<600> jsonBuffer;
     JsonObject &jsonObj = jsonBuffer.createObject();
     char JSONmessageBuffer[600];
@@ -218,7 +215,7 @@ void setup(void)
     }
     catch (const std::exception &e)
     {
-        BlinkNTimes(LED_0, 10, 1000);
+        BlinkNTimes(LED_0, 10, 200);
     }
 }
 
