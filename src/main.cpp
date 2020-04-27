@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
 #include <Arduino.h>
 
@@ -12,33 +11,36 @@
 #include <NTPClient.h>
 #include <TimeLib.h>
 
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+
 #define HTTP_REST_PORT 80
 #define WIFI_RETRY_DELAY 500
 #define MAX_WIFI_INIT_RETRY 50
 #define ONE_WIRE_BUS 2
 
-const long utcOffsetInSeconds = 0;
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
+const long utcOffsetInSeconds = 0;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
-float tempSensor0;
-float tempSensor1;
-DeviceAddress Thermometer0;
-DeviceAddress Thermometer1;
-uint8_t sensor0[8];
-uint8_t sensor1[8];
+float tempSensor[5];
+DeviceAddress Thermometer[5];
+uint8_t sensor[5][8];
 
-String deviceAddress0 = "";
-String deviceAddress1 = "";
+String deviceAddress[5] = {"", "", "", "", ""};
 byte gpio = 2;
-String strTemperature0 = "-127";
-String strTemperature1 = "-127";
-String ipAddress = "127.0.0.0";
-String hostname = "";
+String strTemperature[5] = {"-127", "-127", "-127", "-127", "-127"};
+
+IPAddress staticIP(192, 168, 63, 121);
+IPAddress gateway(192, 168, 63, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(192, 168, 63, 21);
+String hostName = "esp01.local";
+
+int deviceCount;
 
 ESP8266WebServer http_rest_server(HTTP_REST_PORT);
 
@@ -60,6 +62,8 @@ int init_wifi()
 
     Serial.println("Connecting to WiFi");
 
+    WiFi.hostname(hostName);
+    WiFi.config(staticIP, gateway, subnet, dns);    
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
 
@@ -68,13 +72,11 @@ int init_wifi()
         retries++;
         delay(WIFI_RETRY_DELAY);
         Serial.print("#");
-        BlinkNTimes(LED_0, 1, 200);
     }
     Serial.println();
-    hostname = WiFi.hostname();
-    Serial.println("hostname = " + hostname);
-    return WiFi.status();
+    Serial.println("hostName = " + hostName);
     BlinkNTimes(LED_0, 3, 500);
+    return WiFi.status();
 }
 
 String GetAddressToString(DeviceAddress deviceAddress)
@@ -89,15 +91,11 @@ String GetAddressToString(DeviceAddress deviceAddress)
     return str;
 }
 
-void get_temps()
+String GetCurrentTime()
 {
-    Serial.print("HTTP Method: ");
-    Serial.println(http_rest_server.method());
-
     timeClient.update();
     unsigned long epochTime = timeClient.getEpochTime();
     char buff[32];
-    int deviceCount = sensors.getDeviceCount();
 
     sprintf(buff, "%02d-%02d-%02d %02d:%02d:%02d",
             year(epochTime),
@@ -107,53 +105,68 @@ void get_temps()
             minute(epochTime),
             second(epochTime));
     String currentTime = buff;
+    return currentTime;
+}
 
-    sensors.requestTemperatures();
-    tempSensor0 = sensors.getTempC(sensor0);
-    tempSensor1 = sensors.getTempC(sensor1);
+void get_temps()
+{
+    BlinkNTimes(LED_0, 2, 500);
+    StaticJsonBuffer<600> jsonBuffer;
+    JsonObject &jsonObj = jsonBuffer.createObject();
+    char JSONmessageBuffer[600];
 
-    deviceAddress0 = GetAddressToString(Thermometer0);
-    deviceAddress1 = GetAddressToString(Thermometer1);
-    strTemperature0 = tempSensor0;
-    strTemperature1 = tempSensor1;
-    ipAddress = WiFi.localIP().toString();
-
-        StaticJsonBuffer<400> jsonBuffer;
-        JsonObject &jsonObj = jsonBuffer.createObject();
-        char JSONmessageBuffer[400];
-
-    if (deviceAddress0.equals("") && deviceAddress1.equals(""))
+    try
     {
-        Serial.print("No Content");
-        http_rest_server.send(204);
-    }
-    else
-    {
-        //for (int i = 0; i < deviceCount; i++)
-        //
+        jsonObj["UtcTime"] = GetCurrentTime();
+        jsonObj["DeviceCount"] = deviceCount;
+        jsonObj["Hostname"] = hostName;
+        jsonObj["IpAddress"] = WiFi.localIP().toString();
+
+        if (deviceCount == 0)
         {
-            jsonObj["UtcTime"] = currentTime;
-            jsonObj["EpochTime"] = epochTime;
-            jsonObj["DeviceCount"] = deviceCount;
-            jsonObj["ThermometerId0"] = deviceAddress0;
-            jsonObj["ThermometerId1"] = deviceAddress1;
-            jsonObj["Temperature0"] = strTemperature0;
-            jsonObj["Temperature1"] = strTemperature1;
-            jsonObj["Hostname"] = hostname;
-            jsonObj["IpAddress"] = ipAddress;
-            jsonObj["Gpio"] = gpio;
+            Serial.print("No Content");
+            http_rest_server.send(204);
         }
-        jsonObj.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
-        http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
-        http_rest_server.send(200, "application/json", JSONmessageBuffer);
+        else
+        {
+            jsonObj["Gpio"] = gpio;
+            sensors.requestTemperatures();
+            for (int i = 0; i < deviceCount; i++)
+            {
+                tempSensor[i] = sensors.getTempC(sensor[i]);
+                deviceAddress[i] = GetAddressToString(Thermometer[i]);
+                strTemperature[i] = tempSensor[i];
+            }
+
+            String tmpStr;
+            for (int i = 0; i < deviceCount; i++)
+            {
+                tmpStr = String(i);
+                jsonObj["ThermometerId" + tmpStr] = deviceAddress[i];
+                jsonObj["Temperature" + tmpStr] = strTemperature[i];
+            }
+        }
     }
+    catch (const std::exception &e)
+    {
+        // String exception = e.what();
+        // jsonObj["Exception"] = exception.substring(0, 99);
+        jsonObj["Exception"] = " ";
+        //std::cerr << e.what() << '\n';
+    }
+
+    jsonObj.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+
+    http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    http_rest_server.send(200, "application/json", JSONmessageBuffer);
 }
 
 void config_rest_server_routing()
 {
     http_rest_server.on("/", HTTP_GET, []() {
         http_rest_server.send(200, "text/html",
-                              "Welcome to the ESP8266 REST Web Server");
+                              "Welcome to the ESP8266 REST Web Server: " + GetCurrentTime());
     });
     http_rest_server.on("/temps", HTTP_GET, get_temps);
 }
@@ -165,23 +178,6 @@ void setup(void)
     pinMode(LED_0, OUTPUT);
 
     sensors.begin();
-    if (sensors.getAddress(Thermometer0, 0))
-    {
-        //Take the first sensor as the measuring sensor
-        for (uint8_t i = 0; i < 8; i++)
-        {
-            sensor0[i] = Thermometer0[i];
-        }
-    }
-
-    if (sensors.getAddress(Thermometer1, 1))
-    {
-        //Take the first sensor as the measuring sensor
-        for (uint8_t i = 0; i < 8; i++)
-        {
-            sensor1[i] = Thermometer1[i];
-        }
-    }
 
     if (init_wifi() == WL_CONNECTED)
     {
@@ -202,6 +198,25 @@ void setup(void)
 
     http_rest_server.begin();
     Serial.println("HTTP REST Server Started");
+
+    deviceCount = sensors.getDeviceCount();
+    try
+    {
+        for (int j = 0; j < deviceCount; j++)
+        {
+            if (sensors.getAddress(Thermometer[j], j))
+            {
+                for (uint8_t i = 0; i < 8; i++)
+                {
+                    sensor[j][i] = Thermometer[j][i];
+                }
+            }
+        }
+    }
+    catch (const std::exception &e)
+    {
+        BlinkNTimes(LED_0, 10, 200);
+    }
 }
 
 void loop(void)
