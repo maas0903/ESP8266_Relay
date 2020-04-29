@@ -14,6 +14,13 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 
+// //For hostname
+// //does not work
+// extern "C"
+// {
+// #include <user_interface.h>
+// }
+
 #define HTTP_REST_PORT 80
 #define WIFI_RETRY_DELAY 500
 #define MAX_WIFI_INIT_RETRY 50
@@ -38,7 +45,8 @@ IPAddress staticIP(192, 168, 63, 121);
 IPAddress gateway(192, 168, 63, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dns(192, 168, 63, 21);
-String hostName = "esp01.local";
+IPAddress dnsGoogle(8, 8, 8, 8);
+String hostName = "esp01";
 
 int deviceCount;
 
@@ -62,9 +70,9 @@ int init_wifi()
 
     Serial.println("Connecting to WiFi");
 
-    WiFi.hostname(hostName);
-    WiFi.config(staticIP, gateway, subnet, dns);    
+    WiFi.config(staticIP, gateway, subnet, dns, dnsGoogle);
     WiFi.mode(WIFI_STA);
+    WiFi.hostname(hostName);
     WiFi.begin(ssid, password);
 
     while ((WiFi.status() != WL_CONNECTED) && (retries < MAX_WIFI_INIT_RETRY))
@@ -74,7 +82,7 @@ int init_wifi()
         Serial.print("#");
     }
     Serial.println();
-    Serial.println("hostName = " + hostName);
+    //Serial.println("hostName = " + WiFi.hostname);
     BlinkNTimes(LED_0, 3, 500);
     return WiFi.status();
 }
@@ -121,11 +129,17 @@ void get_temps()
         jsonObj["DeviceCount"] = deviceCount;
         jsonObj["Hostname"] = hostName;
         jsonObj["IpAddress"] = WiFi.localIP().toString();
+        jsonObj["Mac Address"] = WiFi.macAddress();
 
         if (deviceCount == 0)
         {
             Serial.print("No Content");
-            http_rest_server.send(204);
+            //http_rest_server.send(204);
+            //CORS
+            http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
+            String sHostName(WiFi.hostname());
+
+            http_rest_server.send(200, "text/html", "No devices found on " + sHostName + " ("+WiFi.macAddress()+")");
         }
         else
         {
@@ -136,7 +150,9 @@ void get_temps()
                 tempSensor[i] = sensors.getTempC(sensor[i]);
                 deviceAddress[i] = GetAddressToString(Thermometer[i]);
                 strTemperature[i] = tempSensor[i];
+                Serial.print(strTemperature[i] + " ");
             }
+            Serial.println();
 
             String tmpStr;
             for (int i = 0; i < deviceCount; i++)
