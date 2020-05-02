@@ -25,6 +25,7 @@
 #define WIFI_RETRY_DELAY 500
 #define MAX_WIFI_INIT_RETRY 50
 #define ONE_WIRE_BUS 2
+#define LED_0 0
 
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
@@ -41,7 +42,7 @@ String deviceAddress[5] = {"", "", "", "", ""};
 byte gpio = 2;
 String strTemperature[5] = {"-127", "-127", "-127", "-127", "-127"};
 
-IPAddress staticIP(192, 168, 63, 121);
+IPAddress staticIP(192, 168, 63, 122);
 IPAddress gateway(192, 168, 63, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dns(192, 168, 63, 21);
