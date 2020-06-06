@@ -27,6 +27,8 @@
 #define ONE_WIRE_BUS 2
 #define LED_0 0
 
+#define DEBUG
+
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
 const long utcOffsetInSeconds = 0;
@@ -42,7 +44,7 @@ String deviceAddress[5] = {"", "", "", "", ""};
 byte gpio = 2;
 String strTemperature[5] = {"-127", "-127", "-127", "-127", "-127"};
 
-IPAddress staticIP(192, 168, 63, 122);
+IPAddress staticIP(192, 168, 63, 134);
 IPAddress gateway(192, 168, 63, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dns(192, 168, 63, 21);
@@ -126,11 +128,18 @@ void get_temps()
 
     try
     {
+#ifdef DEBUG
+        jsonObj["DEBUG"] = "******* true *******";
+#else
+        jsonObj["DEBUG"] = "false";
+#endif
         jsonObj["UtcTime"] = GetCurrentTime();
-        jsonObj["DeviceCount"] = deviceCount;
         jsonObj["Hostname"] = hostName;
         jsonObj["IpAddress"] = WiFi.localIP().toString();
-        jsonObj["Mac Address"] = WiFi.macAddress();
+        jsonObj["MacAddress"] = WiFi.macAddress();
+        jsonObj["Gpio"] = gpio;
+		jsonObj["DeviceType"] = "OneWire_Temp";
+        jsonObj["DeviceCount"] = deviceCount;
 
         if (deviceCount == 0)
         {
@@ -144,12 +153,16 @@ void get_temps()
         }
         else
         {
-            jsonObj["Gpio"] = gpio;
             sensors.requestTemperatures();
             for (int i = 0; i < deviceCount; i++)
             {
+#ifdef DEBUG                
+                tempSensor[i] = 27+i;
+                deviceAddress[i] = (String)(100+i);
+#else
                 tempSensor[i] = sensors.getTempC(sensor[i]);
                 deviceAddress[i] = GetAddressToString(Thermometer[i]);
+#endif                
                 strTemperature[i] = tempSensor[i];
                 Serial.print(strTemperature[i] + " ");
             }
@@ -216,7 +229,8 @@ void setup(void)
     http_rest_server.begin();
     Serial.println("HTTP REST Server Started");
 
-    deviceCount = sensors.getDeviceCount();
+#ifdef DEBUG
+    deviceCount = 2;
     try
     {
         for (int j = 0; j < deviceCount; j++)
@@ -234,6 +248,10 @@ void setup(void)
     {
         BlinkNTimes(LED_0, 10, 200);
     }
+#else
+    deviceCount = sensors.getDeviceCount();
+#endif
+
 }
 
 void loop(void)
