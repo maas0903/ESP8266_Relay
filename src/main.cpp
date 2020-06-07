@@ -27,7 +27,7 @@
 #define ONE_WIRE_BUS 2
 #define LED_0 0
 
-#define DEBUG
+//#define DEBUG
 
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
@@ -122,9 +122,9 @@ String GetCurrentTime()
 void get_temps()
 {
     BlinkNTimes(LED_0, 2, 500);
-    StaticJsonBuffer<600> jsonBuffer;
+    StaticJsonBuffer<800> jsonBuffer;
     JsonObject &jsonObj = jsonBuffer.createObject();
-    char JSONmessageBuffer[600];
+    char JSONmessageBuffer[800];
 
     try
     {
@@ -138,7 +138,7 @@ void get_temps()
         jsonObj["IpAddress"] = WiFi.localIP().toString();
         jsonObj["MacAddress"] = WiFi.macAddress();
         jsonObj["Gpio"] = gpio;
-		jsonObj["DeviceType"] = "OneWire_Temp";
+        jsonObj["DeviceType"] = "OneWire_Temp";
         jsonObj["DeviceCount"] = deviceCount;
 
         if (deviceCount == 0)
@@ -149,31 +149,38 @@ void get_temps()
             http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
             String sHostName(WiFi.hostname());
 
-            http_rest_server.send(200, "text/html", "No devices found on " + sHostName + " ("+WiFi.macAddress()+")");
+            http_rest_server.send(200, "text/html", "No devices found on " + sHostName + " (" + WiFi.macAddress() + ")");
         }
         else
         {
             sensors.requestTemperatures();
             for (int i = 0; i < deviceCount; i++)
             {
-#ifdef DEBUG                
-                tempSensor[i] = 27+i;
-                deviceAddress[i] = (String)(100+i);
+#ifdef DEBUG
+                tempSensor[i] = 27 + i;
+                deviceAddress[i] = (String)(100 + i);
 #else
                 tempSensor[i] = sensors.getTempC(sensor[i]);
                 deviceAddress[i] = GetAddressToString(Thermometer[i]);
-#endif                
+#endif
                 strTemperature[i] = tempSensor[i];
                 Serial.print(strTemperature[i] + " ");
             }
             Serial.println();
 
-            String tmpStr;
+            JsonArray &sensors = jsonObj.createNestedArray("Sensors");
             for (int i = 0; i < deviceCount; i++)
             {
-                tmpStr = String(i);
-                jsonObj["ThermometerId" + tmpStr] = deviceAddress[i];
-                jsonObj["Temperature" + tmpStr] = strTemperature[i];
+                JsonObject &sensor = sensors.createNestedObject();
+                sensor["Id"] = deviceAddress[i];
+                sensor["ValueType"] = "Temperature";
+                sensor["Value"] = strTemperature[i];
+
+                Serial.print("DeviceId=");
+                Serial.println(deviceAddress[i]);
+                Serial.print("Temp=");
+                Serial.println(strTemperature[i]);
+
             }
         }
     }
@@ -204,10 +211,35 @@ void config_rest_server_routing()
 void setup(void)
 {
     Serial.begin(115200);
-    pinMode(LED_BUILTIN, OUTPUT);
+    //pinMode(LED_BUILTIN, OUTPUT);
     pinMode(LED_0, OUTPUT);
 
     sensors.begin();
+
+#ifdef DEBUG
+    deviceCount = 5;
+    try
+    {
+        for (int j = 0; j < deviceCount; j++)
+        {
+            if (sensors.getAddress(Thermometer[j], j))
+            {
+                for (uint8_t i = 0; i < 8; i++)
+                {
+                    sensor[j][i] = Thermometer[j][i];
+                }
+            }
+        }
+    }
+    catch (const std::exception &e)
+    {
+        BlinkNTimes(LED_0, 10, 200);
+    }
+#else
+    deviceCount = sensors.getDeviceCount();
+    Serial.print("DeviceCount=");
+    Serial.println(deviceCount);
+#endif
 
     if (init_wifi() == WL_CONNECTED)
     {
@@ -228,30 +260,6 @@ void setup(void)
 
     http_rest_server.begin();
     Serial.println("HTTP REST Server Started");
-
-#ifdef DEBUG
-    deviceCount = 2;
-    try
-    {
-        for (int j = 0; j < deviceCount; j++)
-        {
-            if (sensors.getAddress(Thermometer[j], j))
-            {
-                for (uint8_t i = 0; i < 8; i++)
-                {
-                    sensor[j][i] = Thermometer[j][i];
-                }
-            }
-        }
-    }
-    catch (const std::exception &e)
-    {
-        BlinkNTimes(LED_0, 10, 200);
-    }
-#else
-    deviceCount = sensors.getDeviceCount();
-#endif
-
 }
 
 void loop(void)
