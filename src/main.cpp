@@ -14,12 +14,14 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 
-// //For hostname
-// //does not work
-// extern "C"
-// {
-// #include <user_interface.h>
-// }
+//#define DEBUG
+IPAddress staticIP(192, 168, 63, 55);
+#define URI "/temps"
+IPAddress gateway(192, 168, 63, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(192, 168, 63, 21);
+IPAddress dnsGoogle(8, 8, 8, 8);
+String hostName = "esp02";
 
 #define HTTP_REST_PORT 80
 #define WIFI_RETRY_DELAY 500
@@ -27,7 +29,6 @@
 #define ONE_WIRE_BUS 2
 #define LED_0 0
 
-//#define DEBUG
 
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
@@ -43,13 +44,6 @@ uint8_t sensor[5][8];
 String deviceAddress[5] = {"", "", "", "", ""};
 byte gpio = 2;
 String strTemperature[5] = {"-127", "-127", "-127", "-127", "-127"};
-
-IPAddress staticIP(192, 168, 63, 135);
-IPAddress gateway(192, 168, 63, 1);
-IPAddress subnet(255, 255, 255, 0);
-IPAddress dns(192, 168, 63, 21);
-IPAddress dnsGoogle(8, 8, 8, 8);
-String hostName = "esp01";
 
 int deviceCount;
 
@@ -85,21 +79,8 @@ int init_wifi()
         Serial.print("#");
     }
     Serial.println();
-    //Serial.println("hostName = " + WiFi.hostname);
     BlinkNTimes(LED_0, 3, 500);
     return WiFi.status();
-}
-
-String GetAddressToString(DeviceAddress deviceAddress)
-{
-    String str = "";
-    for (uint8_t i = 0; i < 8; i++)
-    {
-        if (deviceAddress[i] < 16)
-            str += String(0, HEX);
-        str += String(deviceAddress[i], HEX);
-    }
-    return str;
 }
 
 String GetCurrentTime()
@@ -117,6 +98,18 @@ String GetCurrentTime()
             second(epochTime));
     String currentTime = buff;
     return currentTime;
+}
+
+String GetAddressToString(DeviceAddress deviceAddress)
+{
+    String str = "";
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        if (deviceAddress[i] < 16)
+            str += String(0, HEX);
+        str += String(deviceAddress[i], HEX);
+    }
+    return str;
 }
 
 void get_temps()
@@ -195,6 +188,7 @@ void get_temps()
     jsonObj.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
 
     http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
+    http_rest_server.sendHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
 
     http_rest_server.send(200, "application/json", JSONmessageBuffer);
 }
@@ -205,7 +199,7 @@ void config_rest_server_routing()
         http_rest_server.send(200, "text/html",
                               "Welcome to the ESP8266 REST Web Server: " + GetCurrentTime());
     });
-    http_rest_server.on("/temps", HTTP_GET, get_temps);
+    http_rest_server.on(URI, HTTP_GET, get_temps);
 }
 
 void setup(void)
