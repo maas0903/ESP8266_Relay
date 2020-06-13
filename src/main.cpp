@@ -44,7 +44,7 @@ String deviceAddress[5] = {"", "", "", "", ""};
 byte gpio = 2;
 String strTemperature[5] = {"-127", "-127", "-127", "-127", "-127"};
 
-IPAddress staticIP(192, 168, 63, 134);
+IPAddress staticIP(192, 168, 63, 135);
 IPAddress gateway(192, 168, 63, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dns(192, 168, 63, 21);
@@ -218,6 +218,10 @@ void setup(void)
 
 #ifdef DEBUG
     deviceCount = 5;
+#else
+    deviceCount = sensors.getDeviceCount();
+    Serial.print("DeviceCount=");
+    Serial.println(deviceCount);
     try
     {
         for (int j = 0; j < deviceCount; j++)
@@ -235,10 +239,6 @@ void setup(void)
     {
         BlinkNTimes(LED_0, 10, 200);
     }
-#else
-    deviceCount = sensors.getDeviceCount();
-    Serial.print("DeviceCount=");
-    Serial.println(deviceCount);
 #endif
 
     if (init_wifi() == WL_CONNECTED)
