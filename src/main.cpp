@@ -12,13 +12,12 @@
 #include <ESP8266WebServer.h>
 
 //#define DEBUG
-IPAddress staticIP(192, 168, 63, 59);
+IPAddress staticIP(192, 168, 63, 60);
 #define URI "/status"
 IPAddress gateway(192, 168, 63, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dnsGoogle(8, 8, 8, 8);
 String hostName = "brander";
-const char *propertyHost = "maiden.pagekite.me";
 
 time_t timeNow;
 time_t timeNTP;
@@ -116,7 +115,6 @@ void set_defaults()
 
 boolean GetProperties()
 {
-    String url = "/MelektroApi/getbrandersettings";
     WiFiClient client;
     String response;
     if (client.connect(propertyHost, 80))
@@ -150,30 +148,30 @@ boolean GetProperties()
         return false;
     }
     
-    StaticJsonBuffer<800> doc;
-    JsonObject &root = doc.parseObject(response);
+    StaticJsonDocument<800> doc;
+    auto error = deserializeJson(doc, response);
 
-    if (!root.success())
+    if (error)
     {
         Serial.println("deserializeJson failed");
         set_defaults();
     }
 
     const char *tempPtr;
-    tempPtr = root["hourOn"];
+    tempPtr = doc["hourOn"];
     String tempStr;
     charToStringL(tempPtr, tempStr);
     hourOn = tempStr.toInt();
     Serial.print("hourOn=");
     Serial.println(hourOn);
 
-    tempPtr = root["durationOn"];
+    tempPtr = doc["durationOn"];
     charToStringL(tempPtr, tempStr);
     durationOn = tempStr.toInt();
     Serial.print("durationOn=");
     Serial.println(durationOn);
 
-    tempPtr = root["override"];
+    tempPtr = doc["override"];
     charToStringL(tempPtr, tempStr);
     override = tempStr.toInt();
     Serial.print("override=");
@@ -228,8 +226,8 @@ void get_status()
     doSwitch();
 
     BlinkNTimes(LED_BUILTIN, 2, 500);
-    StaticJsonBuffer<800> jsonBuffer;
-    JsonObject &jsonObj = jsonBuffer.createObject();
+    StaticJsonDocument<800> doc;
+    //JsonObject jsonObj = jsonBuffer.createObject();
     char JSONmessageBuffer[800];
 
     try
@@ -237,31 +235,34 @@ void get_status()
 #ifdef DEBUG
         jsonObj["DEBUG"] = "******* true *******";
 #else
-        jsonObj["DEBUG"] = "false";
+        doc["DEBUG"] = "false";
 #endif
-        jsonObj["UtcTime"] = GetCurrentTime(timeNTP + now());
-        jsonObj["Hostname"] = hostName;
-        jsonObj["IpAddress"] = WiFi.localIP().toString();
-        jsonObj["MacAddress"] = WiFi.macAddress();
-        jsonObj["Gpio_Relay"] = RELAY_BUS;
-        jsonObj["DeviceType"] = "Relay";
-        jsonObj["Status"] = relayOn;
-        jsonObj["GPIOPin Status"] = digitalRead(RELAY_BUS);
-        jsonObj["hourOn"] = hourOn;
-        jsonObj["durationOn"] = durationOn;
-        jsonObj["override"] = override;
-        jsonObj["dayOfMonth"] = dayOfMonth;
-        jsonObj["hourOfDay"] = hourOfDay;
+        doc["UtcTime"] = GetCurrentTime(timeNTP + now());
+        doc["Hostname"] = hostName;
+        doc["IpAddress"] = WiFi.localIP().toString();
+        doc["MacAddress"] = WiFi.macAddress();
+        doc["Gpio_Relay"] = RELAY_BUS;
+        doc["DeviceType"] = "Relay";
+        doc["Status"] = relayOn;
+        doc["GPIOPin Status"] = digitalRead(RELAY_BUS);
+        doc["hourOn"] = hourOn;
+        doc["durationOn"] = durationOn;
+        doc["override"] = override;
+        doc["dayOfMonth"] = dayOfMonth;
+        doc["hourOfDay"] = hourOfDay;
     }
     catch (const std::exception &e)
     {
         // String exception = e.what();
         // jsonObj["Exception"] = exception.substring(0, 99);
-        jsonObj["Exception"] = " ";
+        doc["Exception"] = " ";
         //std::cerr << e.what() << '\n';
     }
+    
+    serializeJsonPretty(doc, JSONmessageBuffer);
 
-    jsonObj.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+    String s;
+    serializeJsonPretty(doc, s);
 
     http_rest_server.sendHeader("Access-Control-Allow-Origin", "*");
     http_rest_server.sendHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
