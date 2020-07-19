@@ -11,6 +11,10 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 
+//Defined in credentials.h
+//const char *propertyHost = "xxx.yyy.com";
+// String url = "/TheApi/getsettings";
+
 //#define DEBUG
 IPAddress staticIP(192, 168, 63, 60);
 #define URI "/status"
