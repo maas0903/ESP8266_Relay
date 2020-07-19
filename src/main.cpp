@@ -18,22 +18,45 @@ IPAddress gateway(192, 168, 63, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dnsGoogle(8, 8, 8, 8);
 String hostName = "brander";
+const char *propertyHost = "maiden.pagekite.me";
+
+time_t timeNow;
+time_t timeNTP;
+
+int hourOfDay;
+int dayOfMonth;
+int hourOn = 8;
+int durationOn = 1;
+int override = 0;
+int overrideHour = 0;
 
 #define HTTP_REST_PORT 80
 #define WIFI_RETRY_DELAY 500
 #define MAX_WIFI_INIT_RETRY 50
 #define RELAY_BUS 0
-#define LED_1 1
+//#define LED_1 1
 #define ONE_WIRE_BUS 2
 
 bool relayOn = false;
 
 // Define NTP Client to get time
 WiFiUDP ntpUDP;
-const long utcOffsetInSeconds = 0;
+const long utcOffsetInSeconds = 2 * 60 * 60;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 
 ESP8266WebServer http_rest_server(HTTP_REST_PORT);
+
+void charToStringL(const char S[], String &D)
+{
+    byte at = 0;
+    const char *p = S;
+    D = "";
+
+    while (*p++)
+    {
+        D.concat(S[at++]);
+    }
+}
 
 void BlinkNTimes(int pin, int blinks, unsigned long millies)
 {
@@ -65,7 +88,7 @@ int init_wifi()
         Serial.print("#");
     }
     Serial.println();
-    BlinkNTimes(LED_1, 3, 500);
+    BlinkNTimes(LED_BUILTIN, 3, 500);
     return WiFi.status();
 }
 
@@ -84,9 +107,127 @@ String GetCurrentTime(time_t epochTime)
     return currentTime;
 }
 
+void set_defaults()
+{
+    durationOn = 1;
+    hourOn = 21;
+    override = 0;
+}
+
+boolean GetProperties()
+{
+    String url = "/MelektroApi/getbrandersettings";
+    WiFiClient client;
+    String response;
+    if (client.connect(propertyHost, 80))
+    {
+        client.print(String("GET " + url) + " HTTP/1.1\r\n" +
+                     "Host: " + propertyHost + "\r\n" +
+                     "Connection: close\r\n" +
+                     "\r\n");
+
+        while (client.connected() || client.available())
+        {
+            if (client.available())
+            {
+                String line = client.readStringUntil('\n');
+                if (line.indexOf("hourOn") > 0)
+                {
+                    response = line;
+                    Serial.println("line="+line);
+                }
+            }
+        }
+        client.stop();
+    }
+    else
+    {
+        Serial.print("connection to ");
+        Serial.print(propertyHost);
+        Serial.println(url + " failed!");
+        client.stop();
+        set_defaults();
+        return false;
+    }
+    
+    StaticJsonBuffer<800> doc;
+    JsonObject &root = doc.parseObject(response);
+
+    if (!root.success())
+    {
+        Serial.println("deserializeJson failed");
+        set_defaults();
+    }
+
+    const char *tempPtr;
+    tempPtr = root["hourOn"];
+    String tempStr;
+    charToStringL(tempPtr, tempStr);
+    hourOn = tempStr.toInt();
+    Serial.print("hourOn=");
+    Serial.println(hourOn);
+
+    tempPtr = root["durationOn"];
+    charToStringL(tempPtr, tempStr);
+    durationOn = tempStr.toInt();
+    Serial.print("durationOn=");
+    Serial.println(durationOn);
+
+    tempPtr = root["override"];
+    charToStringL(tempPtr, tempStr);
+    override = tempStr.toInt();
+    Serial.print("override=");
+    Serial.println(override);
+
+    return true;
+}
+
+void doSwitch()
+{
+    timeNow = now();
+
+    time_t timeCurrent = timeNTP + timeNow;
+    hourOfDay = hour(timeCurrent);
+    dayOfMonth = day(timeCurrent);
+
+    if (override == 1 && !relayOn)
+    {
+        relayOn = true;
+        digitalWrite(RELAY_BUS, LOW);
+        overrideHour = hourOfDay+1;
+        timeClient.update();
+    }
+
+    if ((override == 0 && digitalRead(RELAY_BUS) == LOW) || 
+        (override == 1 && relayOn && hourOfDay > overrideHour))
+    {
+        relayOn = false;
+        digitalWrite(RELAY_BUS, HIGH);
+        override = 0;
+        overrideHour = 0;
+        timeClient.update();
+    }
+
+    if ((dayOfMonth % 2 == 0 || dayOfMonth == 31) && hourOfDay >= hourOn && hourOfDay < hourOn + durationOn && !relayOn)
+    {
+        relayOn = true;
+        digitalWrite(RELAY_BUS, LOW);
+        timeClient.update();
+    }
+
+    if (hourOfDay > hourOn + durationOn && digitalRead(RELAY_BUS) == LOW)
+    {
+        relayOn = false;
+        digitalWrite(RELAY_BUS, HIGH);
+    }
+}
+
 void get_status()
 {
-    BlinkNTimes(LED_1, 2, 500);
+    GetProperties();
+    doSwitch();
+
+    BlinkNTimes(LED_BUILTIN, 2, 500);
     StaticJsonBuffer<800> jsonBuffer;
     JsonObject &jsonObj = jsonBuffer.createObject();
     char JSONmessageBuffer[800];
@@ -98,14 +239,19 @@ void get_status()
 #else
         jsonObj["DEBUG"] = "false";
 #endif
-        jsonObj["UtcTime"] = GetCurrentTime(now());
+        jsonObj["UtcTime"] = GetCurrentTime(timeNTP + now());
         jsonObj["Hostname"] = hostName;
         jsonObj["IpAddress"] = WiFi.localIP().toString();
         jsonObj["MacAddress"] = WiFi.macAddress();
         jsonObj["Gpio_Relay"] = RELAY_BUS;
         jsonObj["DeviceType"] = "Relay";
-        //jsonObj["DeviceCount"] = deviceCount;
-
+        jsonObj["Status"] = relayOn;
+        jsonObj["GPIOPin Status"] = digitalRead(RELAY_BUS);
+        jsonObj["hourOn"] = hourOn;
+        jsonObj["durationOn"] = durationOn;
+        jsonObj["override"] = override;
+        jsonObj["dayOfMonth"] = dayOfMonth;
+        jsonObj["hourOfDay"] = hourOfDay;
     }
     catch (const std::exception &e)
     {
@@ -127,7 +273,7 @@ void config_rest_server_routing()
 {
     http_rest_server.on("/", HTTP_GET, []() {
         http_rest_server.send(200, "text/html",
-                              "Welcome to the ESP8266 REST Web Server: " + GetCurrentTime(now()));
+                              "Welcome to the ESP8266 REST Web Server: " + GetCurrentTime(timeNTP + now()));
     });
     http_rest_server.on(URI, HTTP_GET, get_status);
 }
@@ -136,12 +282,15 @@ void setup(void)
 {
     Serial.begin(115200);
     pinMode(RELAY_BUS, OUTPUT);
+    digitalWrite(RELAY_BUS, HIGH);
 
 #ifdef DEBUG
     deviceCount = 5;
 #else
 #endif
 
+    set_defaults();
+    relayOn = false;
     if (init_wifi() == WL_CONNECTED)
     {
         Serial.print("Connected to ");
@@ -149,13 +298,16 @@ void setup(void)
         Serial.print("--- IP: ");
         Serial.println(WiFi.localIP());
         timeClient.begin();
-        timeClient.update();
 
         config_rest_server_routing();
 
         http_rest_server.begin();
         Serial.println("HTTP REST Server Started");
-    }
+        timeClient.update();
+        timeNTP = timeClient.getEpochTime();
+
+        GetProperties();
+   }
     else
     {
         Serial.print("Error connecting to: ");
@@ -165,25 +317,6 @@ void setup(void)
 
 void loop(void)
 {
-    time_t time_now = now();
-
-    Serial.println("Current time: " + GetCurrentTime(time_now));
-
-    int hourOfDay = hour(time_now);
-    int dayOfMonth = day(time_now);
-
-    if ((dayOfMonth % 2 == 0 || dayOfMonth == 31) && hourOfDay >= 12 && !relayOn)
-    {
-        relayOn = true;
-        digitalWrite(RELAY_BUS, HIGH);
-        timeClient.update();
-    }
-
-    if (hourOfDay > 13 && digitalRead(RELAY_BUS) == HIGH)
-    {
-        relayOn = false;
-        digitalWrite(RELAY_BUS, LOW);
-    }
-
+    doSwitch();
     http_rest_server.handleClient();
 }
