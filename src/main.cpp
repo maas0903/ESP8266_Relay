@@ -11,9 +11,11 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 
+//#include <ArduinoOTA.h>
+
 //Defined in credentials.h
 //const char *propertyHost = "xxx.yyy.com";
-// String url = "/TheApi/getsettings";
+//const char* url = "/MelektroApi/getbrandersettings";
 
 //#define DEBUG
 IPAddress staticIP(192, 168, 63, 60);
@@ -21,7 +23,7 @@ IPAddress staticIP(192, 168, 63, 60);
 IPAddress gateway(192, 168, 63, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dnsGoogle(8, 8, 8, 8);
-String hostName = "brander";
+const char *hostName = "brander";
 
 time_t timeNow;
 time_t timeNTP;
@@ -95,9 +97,9 @@ int init_wifi()
     return WiFi.status();
 }
 
-String GetCurrentTime(time_t epochTime)
+char *GetCurrentTime(time_t epochTime)
 {
-    char buff[32];
+    char *buff = new char[32];
 
     sprintf(buff, "%02d-%02d-%02d %02d:%02d:%02d",
             year(epochTime),
@@ -106,8 +108,7 @@ String GetCurrentTime(time_t epochTime)
             hour(epochTime),
             minute(epochTime),
             second(epochTime));
-    String currentTime = buff;
-    return currentTime;
+    return buff;
 }
 
 void set_defaults()
@@ -123,7 +124,7 @@ boolean GetProperties()
     String response;
     if (client.connect(propertyHost, 80))
     {
-        client.print(String("GET " + url) + " HTTP/1.1\r\n" +
+        client.print(String("GET " + (String)url) + " HTTP/1.1\r\n" +
                      "Host: " + propertyHost + "\r\n" +
                      "Connection: close\r\n" +
                      "\r\n");
@@ -136,7 +137,7 @@ boolean GetProperties()
                 if (line.indexOf("hourOn") > 0)
                 {
                     response = line;
-                    Serial.println("line="+line);
+                    Serial.println("line=" + line);
                 }
             }
         }
@@ -146,12 +147,13 @@ boolean GetProperties()
     {
         Serial.print("connection to ");
         Serial.print(propertyHost);
-        Serial.println(url + " failed!");
+        Serial.print(url);
+        Serial.println(" failed!");
         client.stop();
         set_defaults();
         return false;
     }
-    
+
     StaticJsonDocument<800> doc;
     auto error = deserializeJson(doc, response);
 
@@ -163,21 +165,17 @@ boolean GetProperties()
 
     const char *tempPtr;
     tempPtr = doc["hourOn"];
-    String tempStr;
-    charToStringL(tempPtr, tempStr);
-    hourOn = tempStr.toInt();
+    hourOn = ((String)tempPtr).toInt();
     Serial.print("hourOn=");
     Serial.println(hourOn);
 
     tempPtr = doc["durationOn"];
-    charToStringL(tempPtr, tempStr);
-    durationOn = tempStr.toInt();
+    durationOn = ((String)tempPtr).toInt();
     Serial.print("durationOn=");
     Serial.println(durationOn);
 
     tempPtr = doc["override"];
-    charToStringL(tempPtr, tempStr);
-    override = tempStr.toInt();
+    override = ((String)tempPtr).toInt();
     Serial.print("override=");
     Serial.println(override);
 
@@ -196,11 +194,11 @@ void doSwitch()
     {
         relayOn = true;
         digitalWrite(RELAY_BUS, LOW);
-        overrideHour = hourOfDay+1;
+        overrideHour = hourOfDay + 1;
         timeClient.update();
     }
 
-    if ((override == 0 && digitalRead(RELAY_BUS) == LOW) || 
+    if ((override == 0 && digitalRead(RELAY_BUS) == LOW) ||
         (override == 1 && relayOn && hourOfDay > overrideHour))
     {
         relayOn = false;
@@ -262,7 +260,7 @@ void get_status()
         doc["Exception"] = " ";
         //std::cerr << e.what() << '\n';
     }
-    
+
     serializeJsonPretty(doc, JSONmessageBuffer);
 
     String s;
@@ -278,10 +276,58 @@ void config_rest_server_routing()
 {
     http_rest_server.on("/", HTTP_GET, []() {
         http_rest_server.send(200, "text/html",
-                              "Welcome to the ESP8266 REST Web Server: " + GetCurrentTime(timeNTP + now()));
+                              "Welcome to the ESP8266 REST Web Server: " + (String)GetCurrentTime(timeNTP + now()));
     });
     http_rest_server.on(URI, HTTP_GET, get_status);
 }
+
+// void AotStuff()
+// {
+//     ArduinoOTA.onStart([]() {
+//         String type;
+//         if (ArduinoOTA.getCommand() == U_FLASH)
+//         {
+//             type = "sketch";
+//         }
+//         else
+//         { // U_FS
+//             type = "filesystem";
+//         }
+
+//         // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+//         Serial.println("Start updating " + type);
+//     });
+//     ArduinoOTA.onEnd([]() {
+//         Serial.println("\nEnd");
+//     });
+//     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+//         Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+//     });
+//     ArduinoOTA.onError([](ota_error_t error) {
+//         Serial.printf("Error[%u]: ", error);
+//         if (error == OTA_AUTH_ERROR)
+//         {
+//             Serial.println("Auth Failed");
+//         }
+//         else if (error == OTA_BEGIN_ERROR)
+//         {
+//             Serial.println("Begin Failed");
+//         }
+//         else if (error == OTA_CONNECT_ERROR)
+//         {
+//             Serial.println("Connect Failed");
+//         }
+//         else if (error == OTA_RECEIVE_ERROR)
+//         {
+//             Serial.println("Receive Failed");
+//         }
+//         else if (error == OTA_END_ERROR)
+//         {
+//             Serial.println("End Failed");
+//         }
+//     });
+//     ArduinoOTA.begin();
+// }
 
 void setup(void)
 {
@@ -302,6 +348,9 @@ void setup(void)
         Serial.print(ssid);
         Serial.print("--- IP: ");
         Serial.println(WiFi.localIP());
+
+        //AotStuff();
+
         timeClient.begin();
 
         config_rest_server_routing();
@@ -312,7 +361,7 @@ void setup(void)
         timeNTP = timeClient.getEpochTime();
 
         GetProperties();
-   }
+    }
     else
     {
         Serial.print("Error connecting to: ");
